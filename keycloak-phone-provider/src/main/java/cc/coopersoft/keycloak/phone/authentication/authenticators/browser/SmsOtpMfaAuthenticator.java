@@ -23,14 +23,6 @@ import java.net.URI;
 
 public class SmsOtpMfaAuthenticator implements Authenticator, CredentialValidator<PhoneOtpCredentialProvider> {
 
-    protected boolean hasCookie(AuthenticationFlowContext context) {
-        Cookie cookie = context.getHttpRequest()
-                .getHttpHeaders()
-                .getCookies()
-                .get("SMS_OTP_ANSWERED");
-        return cookie != null;
-    }
-
     protected boolean validateAnswer(AuthenticationFlowContext context) {
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
         String secret = formData.getFirst("code");
@@ -44,34 +36,6 @@ public class SmsOtpMfaAuthenticator implements Authenticator, CredentialValidato
         return getCredentialProvider(context.getSession()).isValid(context.getRealm(), context.getUser(), input);
     }
 
-    protected void setCookie(AuthenticationFlowContext context) {
-
-        AuthenticatorConfigModel config = context.getAuthenticatorConfig();
-        int maxCookieAge = 60 * 60; // 1 hour
-
-        if (config != null) maxCookieAge = Integer.parseInt(config.getConfig().get("cookie.max.age"));
-
-        URI uri = context.getUriInfo()
-                .getBaseUriBuilder()
-                .path("realms")
-                .path(context.getRealm().getName())
-                .build();
-
-        addCookie(context, "SMS_OTP_ANSWERED", "true",
-                uri.getRawPath(),
-                null, null,
-                maxCookieAge,
-                false, true);
-    }
-
-    public void addCookie(AuthenticationFlowContext context, String name, String value, String path, String domain, String comment, int maxAge, boolean secure, boolean httpOnly) {
-        HttpResponse response = context.getSession().getContext().getContextObject(HttpResponse.class);
-        StringBuffer cookieBuf = new StringBuffer();
-        ServerCookie.appendCookieValue(cookieBuf, 1, name, value, path, domain, comment, maxAge, secure, httpOnly, null);
-        String cookie = cookieBuf.toString();
-        response.getOutputHeaders().add(HttpHeaders.SET_COOKIE, cookie);
-    }
-
     @Override
     public PhoneOtpCredentialProvider getCredentialProvider(KeycloakSession session) {
         return (PhoneOtpCredentialProvider) session.getProvider(CredentialProvider.class, PhoneOtpCredentialProviderFactory.PROVIDER_ID);
@@ -79,10 +43,6 @@ public class SmsOtpMfaAuthenticator implements Authenticator, CredentialValidato
 
     @Override
     public void authenticate(AuthenticationFlowContext context) {
-        if (hasCookie(context)) {
-            context.success();
-            return;
-        }
         PhoneMessageService phoneMessageService = context.getSession().getProvider(PhoneMessageService.class);
         String phoneNumber = context.getUser().getFirstAttribute("phoneNumber");
         Response challenge;
@@ -105,7 +65,6 @@ public class SmsOtpMfaAuthenticator implements Authenticator, CredentialValidato
             context.failureChallenge(AuthenticationFlowError.INVALID_CREDENTIALS, challenge);
             return;
         }
-        setCookie(context);
         context.success();
     }
 
